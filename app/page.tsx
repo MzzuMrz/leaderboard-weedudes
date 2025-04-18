@@ -1,12 +1,10 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Press_Start_2P } from "next/font/google"
 import { KonamiFooter } from "@/components/konami-footer"
 import { Scanlines } from "@/components/scanlines"
 import { ArcadeAnimations } from "@/components/arcade-animations"
-import { DemoVideo } from "@/components/demo-video"
-import { ArcadeTransition } from "@/components/arcade-transition"
 import Image from "next/image"
 
 // Fuente arcade clásica
@@ -23,9 +21,6 @@ interface Score {
   timestamp: number
 }
 
-// Estados de la pantalla arcade
-type ArcadeMode = "scores" | "demo"
-
 export default function HighScores() {
   const [scores, setScores] = useState<Score[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,28 +29,8 @@ export default function HighScores() {
   const [glitchEffect, setGlitchEffect] = useState(false)
   const [highlightedRow, setHighlightedRow] = useState<number | null>(null)
   const [showHighScoreText, setShowHighScoreText] = useState(false)
-  const [arcadeMode, setArcadeMode] = useState<ArcadeMode>("scores")
-  const [autoChangeDisabled, setAutoChangeDisabled] = useState(false)
-  const [isTransitioning, setIsTransitioning] = useState(false)
-
-  // Función para cambiar de modo con seguridad
-  const changeMode = useCallback(
-    (newMode: ArcadeMode) => {
-      if (isTransitioning) return
-
-      setIsTransitioning(true)
-      setTimeout(() => {
-        setArcadeMode(newMode)
-        setIsTransitioning(false)
-      }, 500)
-    },
-    [isTransitioning],
-  )
-
-  // Manejar el final del video
-  const handleVideoEnd = useCallback(() => {
-    changeMode("scores")
-  }, [changeMode])
+  const [videoError, setVideoError] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
   // Obtener puntuaciones desde la API
   useEffect(() => {
@@ -117,32 +92,53 @@ export default function HighScores() {
     }
   }, [])
 
-  // Alternar entre modos automáticamente
+  // Manejar la reproducción del video
   useEffect(() => {
-    if (loading || autoChangeDisabled || isTransitioning) return
+    const videoElement = videoRef.current
+    if (!videoElement) return
 
-    let scoreTimeoutId: NodeJS.Timeout
-    let demoTimeoutId: NodeJS.Timeout
-
-    // Cambiar a modo demo después de mostrar scores por un tiempo
-    if (arcadeMode === "scores") {
-      scoreTimeoutId = setTimeout(() => {
-        changeMode("demo")
-      }, 30000) // 30 segundos mostrando scores
+    // Función para manejar errores del video
+    const handleVideoError = () => {
+      console.error("Error al cargar el video")
+      setVideoError(true)
     }
 
-    // Cambiar a modo scores después de mostrar demo por un tiempo
-    if (arcadeMode === "demo") {
-      demoTimeoutId = setTimeout(() => {
-        changeMode("scores")
-      }, 60000) // 60 segundos mostrando demo
+    // Función para reproducir el video en loop
+    const handleVideoEnd = () => {
+      videoElement.currentTime = 0
+      videoElement.play().catch((err) => {
+        console.warn("Error al reproducir video:", err)
+      })
     }
+
+    // Función para cuando el video está listo para reproducirse
+    const handleCanPlay = () => {
+      console.log("Video listo para reproducir en HighScores")
+      // Solo iniciar reproducción si no hay error
+      if (!videoElement.error) {
+        videoElement.play().catch(err => {
+          console.warn("Error al reproducir video en canplay:", err)
+          setVideoError(true)
+        })
+      }
+    }
+
+    // Configurar eventos
+    videoElement.addEventListener("error", handleVideoError)
+    videoElement.addEventListener("ended", handleVideoEnd)
+    videoElement.addEventListener("canplay", handleCanPlay)
+
+    // No intentamos reproducir inmediatamente - dejamos que el evento canplay lo maneje
 
     return () => {
-      if (scoreTimeoutId) clearTimeout(scoreTimeoutId)
-      if (demoTimeoutId) clearTimeout(demoTimeoutId)
+      videoElement.removeEventListener("error", handleVideoError)
+      videoElement.removeEventListener("ended", handleVideoEnd)
+      videoElement.removeEventListener("canplay", handleCanPlay)
+      
+      // Detener el video al desmontar
+      videoElement.pause()
     }
-  }, [arcadeMode, loading, autoChangeDisabled, isTransitioning, changeMode])
+  }, [])
 
   // Colores arcoíris para las filas como en los juegos arcade clásicos
   const rowColors = [
@@ -157,6 +153,12 @@ export default function HighScores() {
     "text-yellow-300", // Amarillo
     "text-orange-500", // Naranja
   ]
+
+  // Crear un array de 10 puntuaciones (rellenando con scores vacíos si faltan)
+  const displayScores = [...scores]
+  while (displayScores.length < 10) {
+    displayScores.push({ name: "---", score: 0, purity: 0, timestamp: 0 })
+  }
 
   // Pantalla de carga
   if (loading) {
@@ -176,98 +178,126 @@ export default function HighScores() {
         {/* Animaciones arcade */}
         <ArcadeAnimations />
 
-        {/* Modo Demo (Video) */}
-        <ArcadeTransition isActive={arcadeMode === "demo"}>
-          <DemoVideo onVideoEnd={handleVideoEnd} />
-        </ArcadeTransition>
+        {/* Contenedor principal con diseño de pantalla única */}
+        <div className="w-full h-full max-h-screen flex flex-col z-10 border-2 border-green-500 rounded-lg p-4 bg-black bg-opacity-80">
+          {/* Fila superior con título */}
+          <div className={`${arcadeFont.className} flex flex-col items-center mb-2`}>
+            {/* Título con logos */}
+            <div className="flex items-center gap-5 mb-2">
+              <Image
+                src="/images/weed-leaf.png"
+                alt="Weed Leaf"
+                width={30}
+                height={30}
+                className={`${blinkText ? "opacity-100" : "opacity-80"} transition-opacity duration-300`}
+              />
+              <h1 className="text-xl text-green-400 animate-pulse">WEEDUDES ARCADE</h1>
+              <Image
+                src="/images/weed-leaf.png"
+                alt="Weed Leaf"
+                width={30}
+                height={30}
+                className={`${blinkText ? "opacity-80" : "opacity-100"} transition-opacity duration-300`}
+              />
+            </div>
 
-        {/* Modo Scores (Tabla de puntuaciones) */}
-        <ArcadeTransition isActive={arcadeMode === "scores"}>
-          {/* Contenedor principal con bordes decorativos */}
-          <div className="w-full h-full max-h-screen flex flex-col justify-between z-10 border-2 border-green-500 rounded-lg p-4 bg-black bg-opacity-80">
-            {/* Cabecera con logo */}
-            <div className={`${arcadeFont.className} flex flex-col items-center`}>
-              {/* Título con logos */}
-              <div className="flex items-center gap-5 mb-3">
-                <Image
-                  src="/images/weed-leaf.png"
-                  alt="Weed Leaf"
-                  width={40}
-                  height={40}
-                  className={`${blinkText ? "opacity-100" : "opacity-80"} transition-opacity duration-300`}
-                />
-                <h1 className="text-2xl text-green-400 animate-pulse">HIGH SCORES</h1>
-                <Image
-                  src="/images/weed-leaf.png"
-                  alt="Weed Leaf"
-                  width={40}
-                  height={40}
-                  className={`${blinkText ? "opacity-80" : "opacity-100"} transition-opacity duration-300`}
-                />
-              </div>
+            {/* Línea decorativa */}
+            <div className="w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent"></div>
+          </div>
 
-              {/* Línea decorativa */}
-              <div className="w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent mb-2"></div>
+          {/* Contenido principal en dos columnas */}
+          <div className="flex-grow flex flex-row gap-4">
+            {/* Columna izquierda: Tabla de puntuaciones */}
+            <div className="w-3/5 flex flex-col">
+              <div className={`${arcadeFont.className} text-center text-green-300 text-sm mb-2`}>HIGH SCORES</div>
 
-              {/* Encabezados de columnas con mejor espaciado */}
+              {/* Encabezados de columnas */}
               <div className="grid grid-cols-3 w-full mb-2 text-blue-200 text-xs">
                 <div className="text-center">RANK</div>
                 <div className="text-center">SCORE (PURITY)</div>
                 <div className="text-center">NAME</div>
               </div>
+
+              {/* Filas de puntuaciones - Siempre mostramos 10 filas */}
+              <div className={`${arcadeFont.className} grid gap-2 relative`} style={{ gridTemplateRows: 'repeat(10, auto)' }}>
+                {displayScores.slice(0, 10).map((score, index) => (
+                  <div
+                    key={index}
+                    className={`
+                      grid grid-cols-3 items-center 
+                      ${rowColors[index % rowColors.length]} 
+                      ${highlightedRow === index ? "bg-opacity-20 bg-white animate-pulse" : ""}
+                      transition-all duration-300 ease-in-out
+                      py-3 px-2 rounded
+                      border border-opacity-20 border-current
+                      ${index === 0 ? "relative" : ""}
+                      text-xs
+                    `}
+                  >
+                    <div className="text-center">{index + 1}</div>
+                    <div className="text-center">{score.score.toString().padStart(3, "0")}</div>
+                    <div className="text-center uppercase">{score.name || "???"}</div>
+
+                    {/* Estrella para el primer lugar */}
+                    {index === 0 && score.score > 0 && (
+                      <div className="absolute -left-4 top-1/2 transform -translate-y-1/2 text-yellow-300 animate-pulse">
+                        ★
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Texto "HIGH SCORE" que aparece cuando se destaca la primera fila */}
+                {showHighScoreText && (
+                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-yellow-300 text-xs animate-pulse">
+                    HIGH SCORE!
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Filas de puntuaciones - Ajustadas para que entren todas en pantalla */}
-            <div className={`${arcadeFont.className} grid grid-rows-10 gap-1 my-2 relative`}>
-              {scores.slice(0, 10).map((score, index) => (
-                <div
-                  key={index}
-                  className={`
-                    grid grid-cols-3 items-center 
-                    ${rowColors[index % rowColors.length]} 
-                    ${highlightedRow === index ? "bg-opacity-20 bg-white animate-pulse" : ""}
-                    transition-all duration-300 ease-in-out
-                    py-1 px-2 rounded
-                    border border-opacity-20 border-current
-                    ${index === 0 ? "relative" : ""}
-                  `}
-                >
-                  <div className="text-center text-base">{index + 1}</div>
-                  <div className="text-center text-base">{score.score.toString().padStart(3, "0")}</div>
-                  <div className="text-center text-base uppercase">{score.name || "???"}</div>
+            {/* Columna derecha: Video o imagen con QR */}
+            <div className="w-2/5 flex flex-col items-center justify-center bg-black bg-opacity-50 rounded-lg overflow-hidden border border-green-500 border-opacity-30">
+              <div className={`${arcadeFont.className} text-center text-green-300 text-xs mb-2`}>¡JUEGA AHORA!</div>
 
-                  {/* Estrella para el primer lugar */}
-                  {index === 0 && (
-                    <div className="absolute -left-6 top-1/2 transform -translate-y-1/2 text-yellow-300 animate-pulse">
-                      ★
-                    </div>
-                  )}
+              {videoError ? (
+                // Fallback: Imagen con QR o mensaje
+                <div className="flex flex-col items-center justify-center p-4 text-center">
+                  <div className="text-green-400 text-sm mb-4">Escanea el código QR para jugar</div>
+                  <div className="w-48 h-48 bg-white flex items-center justify-center rounded">
+                    <div className="text-black text-xs">QR Code</div>
+                  </div>
                 </div>
-              ))}
-
-              {/* Texto "HIGH SCORE" que aparece cuando se destaca la primera fila */}
-              {showHighScoreText && (
-                <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 text-yellow-300 text-lg animate-pulse">
-                  HIGH SCORE!
-                </div>
+              ) : (
+                // Video - Corregimos la ruta del video
+                <video
+                  ref={videoRef}
+                  className="max-w-full max-h-[calc(100%-2rem)] object-contain"
+                  src="/assets/animacion.mp4"
+                  muted
+                  playsInline
+                  preload="auto"
+                  autoPlay
+                  loop
+                />
               )}
             </div>
+          </div>
 
-            {/* Footer */}
-            <div>
-              {/* Línea decorativa antes del footer */}
-              <div className="w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent mb-4"></div>
+          {/* Footer */}
+          <div className="mt-2">
+            {/* Línea decorativa antes del footer */}
+            <div className="w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent mb-2"></div>
 
-              {/* Footer estilo Konami */}
+            {/* Footer y créditos */}
+            <div className="flex justify-between items-center">
               <KonamiFooter />
-
-              {/* Contador de créditos con animación */}
-              <div className="absolute bottom-4 right-8 text-white text-lg">
+              <div className="text-white text-sm">
                 CREDIT <span className="text-yellow-300 animate-pulse">{credits}</span>
               </div>
             </div>
           </div>
-        </ArcadeTransition>
+        </div>
       </div>
     </div>
   )
