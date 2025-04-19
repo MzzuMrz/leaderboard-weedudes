@@ -230,7 +230,7 @@ export default function HighScores() {
           <div className="mt-2 sm:mt-4 text-gray-400 text-xxs sm:text-xs flex items-center">
             <span>CHAOS ORDER</span>
             <span className="mx-1">®</span>
-            <span className="ml-1">2024</span>
+            <span className="ml-1">2025</span>
           </div>
         </div>
       </div>
