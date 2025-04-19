@@ -82,3 +82,25 @@ body {
     animation: pixelate 0.5s;
   }
 }
+
+/* Optimizaciones para TV */
+@media screen and (min-width: 1920px) {
+  html,
+  body {
+    font-size: 20px;
+  }
+}
+
+@media screen and (min-width: 2560px) {
+  html,
+  body {
+    font-size: 24px;
+  }
+}
+
+@media screen and (min-width: 3840px) {
+  html,
+  body {
+    font-size: 32px;
+  }
+}

@@ -2,9 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { Press_Start_2P } from "next/font/google"
-import { KonamiFooter } from "@/components/konami-footer"
 import { Scanlines } from "@/components/scanlines"
-import { ArcadeAnimations } from "@/components/arcade-animations"
 import Image from "next/image"
 
 // Fuente arcade clásica
@@ -24,11 +22,8 @@ interface Score {
 export default function HighScores() {
   const [scores, setScores] = useState<Score[]>([])
   const [loading, setLoading] = useState(true)
-  const [credits, setCredits] = useState(420)
-  const [blinkText, setBlinkText] = useState(true)
-  const [glitchEffect, setGlitchEffect] = useState(false)
   const [highlightedRow, setHighlightedRow] = useState<number | null>(null)
-  const [showHighScoreText, setShowHighScoreText] = useState(false)
+  const [videoLoaded, setVideoLoaded] = useState(false)
   const [videoError, setVideoError] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -48,48 +43,27 @@ export default function HighScores() {
         setLoading(false)
       } catch (error) {
         console.error("Error fetching scores:", error)
+        // Datos de fallback en caso de error
+        const fallbackScores = [
+          { name: "WEEDUDES.CLUB", score: 88, purity: 95, timestamp: Date.now() },
+          { name: "WEEDUDES.CLUB", score: 75, purity: 90, timestamp: Date.now() },
+          { name: "VENDOFASO", score: 52, purity: 85, timestamp: Date.now() },
+          { name: "YUAN", score: 42, purity: 80, timestamp: Date.now() },
+          { name: "JSJSJSKSJ", score: 22, purity: 75, timestamp: Date.now() },
+          { name: "YUAN", score: 18, purity: 70, timestamp: Date.now() },
+          { name: "ANGELZK", score: 12, purity: 65, timestamp: Date.now() },
+          { name: "JSJSJSKSJ", score: 0, purity: 60, timestamp: Date.now() },
+          { name: "ANGELZK", score: 0, purity: 55, timestamp: Date.now() },
+          { name: "---", score: 0, purity: 50, timestamp: Date.now() },
+        ]
+        setScores(fallbackScores)
         setLoading(false)
       }
     }
 
     fetchScores()
 
-    // Parpadeo del texto
-    const blinkInterval = setInterval(() => {
-      setBlinkText((prev) => !prev)
-    }, 800)
-
-    // Efecto de glitch aleatorio
-    const glitchInterval = setInterval(() => {
-      if (Math.random() > 0.8) {
-        setGlitchEffect(true)
-        setTimeout(() => setGlitchEffect(false), 150)
-      }
-    }, 5000)
-
-    // Destacar filas aleatoriamente
-    const highlightInterval = setInterval(() => {
-      const randomRow = Math.floor(Math.random() * 10)
-      setHighlightedRow(randomRow)
-
-      // Mostrar texto "HIGH SCORE" cuando se destaca la primera fila
-      if (randomRow === 0) {
-        setShowHighScoreText(true)
-        setTimeout(() => {
-          setShowHighScoreText(false)
-        }, 2000)
-      }
-
-      setTimeout(() => {
-        setHighlightedRow(null)
-      }, 800)
-    }, 4000)
-
-    return () => {
-      clearInterval(blinkInterval)
-      clearInterval(glitchInterval)
-      clearInterval(highlightInterval)
-    }
+    return () => {}
   }, [])
 
   // Manejar la reproducción del video
@@ -97,68 +71,89 @@ export default function HighScores() {
     const videoElement = videoRef.current
     if (!videoElement) return
 
+    // Función para manejar cuando el video está listo
+    const handleCanPlay = () => {
+      console.log("Video listo para reproducir")
+      setVideoLoaded(true)
+
+      // Intentar reproducir el video cuando esté listo
+      const playPromise = videoElement.play()
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.error("Error al reproducir video:", err)
+          setVideoError(true)
+
+          // Reintentar reproducción (para TVs que pueden tener restricciones)
+          setTimeout(() => {
+            videoElement.play().catch((e) => {
+              console.error("Segundo intento fallido:", e)
+            })
+          }, 1000)
+        })
+      }
+    }
+
     // Función para manejar errores del video
-    const handleVideoError = () => {
-      console.error("Error al cargar el video")
+    const handleVideoError = (e: Event) => {
+      console.error("Error al cargar el video:", e)
       setVideoError(true)
     }
 
     // Función para reproducir el video en loop
     const handleVideoEnd = () => {
+      console.log("Video terminado, reiniciando...")
       videoElement.currentTime = 0
-      videoElement.play().catch((err) => {
-        console.warn("Error al reproducir video:", err)
-      })
-    }
 
-    // Función para cuando el video está listo para reproducirse
-    const handleCanPlay = () => {
-      console.log("Video listo para reproducir en HighScores")
-      // Solo iniciar reproducción si no hay error
-      if (!videoElement.error) {
-        videoElement.play().catch(err => {
-          console.warn("Error al reproducir video en canplay:", err)
-          setVideoError(true)
+      const playPromise = videoElement.play()
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn("Error al reproducir video en loop:", err)
         })
       }
     }
 
     // Configurar eventos
+    videoElement.addEventListener("canplay", handleCanPlay)
     videoElement.addEventListener("error", handleVideoError)
     videoElement.addEventListener("ended", handleVideoEnd)
-    videoElement.addEventListener("canplay", handleCanPlay)
 
-    // No intentamos reproducir inmediatamente - dejamos que el evento canplay lo maneje
+    // Configurar propiedades del video
+    videoElement.loop = true
+    videoElement.muted = true
+    videoElement.playsInline = true
+    videoElement.autoplay = true
+
+    // Cargar el video
+    videoElement.load()
 
     return () => {
+      videoElement.removeEventListener("canplay", handleCanPlay)
       videoElement.removeEventListener("error", handleVideoError)
       videoElement.removeEventListener("ended", handleVideoEnd)
-      videoElement.removeEventListener("canplay", handleCanPlay)
-      
+
       // Detener el video al desmontar
-      videoElement.pause()
+      try {
+        videoElement.pause()
+        videoElement.src = ""
+      } catch (err) {
+        console.warn("Error al limpiar video:", err)
+      }
     }
   }, [])
 
-  // Colores arcoíris para las filas como en los juegos arcade clásicos
+  // Colores exactos para las filas como en la imagen de referencia
   const rowColors = [
-    "text-yellow-300", // Amarillo
-    "text-orange-500", // Naranja
-    "text-pink-400", // Rosa
-    "text-yellow-300", // Amarillo
-    "text-white", // Blanco
-    "text-green-400", // Verde
-    "text-blue-400", // Azul
-    "text-cyan-400", // Cian
-    "text-yellow-300", // Amarillo
-    "text-orange-500", // Naranja
+    "text-yellow-300", // Amarillo (1)
+    "text-orange-500", // Naranja (2)
+    "text-pink-500", // Rosa (3)
+    "text-yellow-300", // Amarillo (4)
+    "text-white", // Blanco (5)
+    "text-green-400", // Verde (6)
+    "text-blue-400", // Azul (7)
+    "text-cyan-400", // Cian (8)
+    "text-yellow-300", // Amarillo (9)
+    "text-orange-500", // Naranja (10)
   ]
-
-  // Crear un array de 10 puntuaciones (rellenando con scores vacíos si faltan)
-  const displayScores = [...scores]
-  while (displayScores.length < 10) {
-    displayScores.push({ name: "---", score: 0, purity: 0, timestamp: 0 })
-  }
 
   // Pantalla de carga
   if (loading) {
@@ -170,132 +165,72 @@ export default function HighScores() {
   }
 
   return (
-    <div className="h-screen w-screen bg-black overflow-hidden">
-      <div className="flex flex-col items-center justify-center h-full w-full text-white p-4 relative">
+    <div className="h-screen w-screen overflow-hidden relative flex items-center justify-center">
+      {/* Video de fondo a pantalla completa */}
+      <div className="absolute inset-0 z-0 bg-black">
+        {!videoError ? (
+          <video
+            ref={videoRef}
+            className="w-full h-full object-cover"
+            src="/animacion-weeddudes.mp4"
+            muted
+            playsInline
+            autoPlay
+            loop
+          />
+        ) : (
+          <div className="w-full h-full bg-amber-800" style={{ background: "url('/images/background.jpg')" }}></div>
+        )}
+      </div>
+
+      {/* Contenedor principal centrado - ajustado para asegurar que cabe en viewport */}
+      <div className="w-[90%] max-w-4xl mb-24 h-auto max-h-[90vh] relative rounded-xl overflow-hidden border-2 border-green-500 bg-black">
         {/* Efectos CRT */}
         <Scanlines />
 
-        {/* Animaciones arcade */}
-        <ArcadeAnimations />
-
-        {/* Contenedor principal con diseño de pantalla única */}
-        <div className="w-full h-full max-h-screen flex flex-col z-10 border-2 border-green-500 rounded-lg p-4 bg-black bg-opacity-80">
-          {/* Fila superior con título */}
-          <div className={`${arcadeFont.className} flex flex-col items-center mb-2`}>
-            {/* Título con logos */}
-            <div className="flex items-center gap-5 mb-2">
-              <Image
-                src="/images/weed-leaf.png"
-                alt="Weed Leaf"
-                width={30}
-                height={30}
-                className={`${blinkText ? "opacity-100" : "opacity-80"} transition-opacity duration-300`}
-              />
-              <h1 className="text-xl text-green-400 animate-pulse">WEEDUDES ARCADE</h1>
-              <Image
-                src="/images/weed-leaf.png"
-                alt="Weed Leaf"
-                width={30}
-                height={30}
-                className={`${blinkText ? "opacity-80" : "opacity-100"} transition-opacity duration-300`}
-              />
+        {/* Contenido de la pantalla - se ajustó el padding para pantallas pequeñas */}
+        <div className="w-full h-full flex flex-col p-3 sm:p-4 md:p-6 relative z-10">
+          {/* Título */}
+          <div className={`${arcadeFont.className} text-center mb-2 sm:mb-4`}>
+            <div className="flex items-center justify-center gap-2">
+              <Image src="/images/weedudes-logo.png" alt="Weedudes Head" width={20} height={20} className="h-12 w-12" />
+              <h1 className="text-green-500 text-sm sm:text-lg md:text-xl">ROLLING WEEDUDES</h1>
             </div>
-
-            {/* Línea decorativa */}
-            <div className="w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent"></div>
+            <h2 className="text-green-500 text-xs sm:text-sm md:text-lg mt-2 md:mt-4">HIGH SCORES</h2>
           </div>
 
-          {/* Contenido principal en dos columnas */}
-          <div className="flex-grow flex flex-row gap-4">
-            {/* Columna izquierda: Tabla de puntuaciones */}
-            <div className="w-3/5 flex flex-col">
-              <div className={`${arcadeFont.className} text-center text-green-300 text-sm mb-2`}>HIGH SCORES</div>
+          {/* Encabezados de columnas */}
+          <div className="grid grid-cols-3 w-full mb-1 sm:mb-2 text-gray-400 text-xxs sm:text-xs">
+            <div className="text-center">RANK</div>
+            <div className="text-center">SCORE (PURITY)</div>
+            <div className="text-center">NAME</div>
+          </div>
 
-              {/* Encabezados de columnas */}
-              <div className="grid grid-cols-3 w-full mb-2 text-blue-200 text-xs">
-                <div className="text-center">RANK</div>
-                <div className="text-center">SCORE (PURITY)</div>
-                <div className="text-center">NAME</div>
+          {/* Filas de puntuaciones - ahora con scroll si hay overflow */}
+          <div className={`${arcadeFont.className} space-y-1 sm:space-y-2 flex-grow overflow-y-auto`}>
+            {scores.slice(0, 10).map((score, index) => (
+              <div
+                key={index}
+                className={`
+                  grid grid-cols-3 items-center 
+                  ${rowColors[index]} 
+                  py-1 sm:py-2 px-2 sm:px-4 rounded
+                  border border-opacity-30 border-current
+                  text-xxs sm:text-xs
+                `}
+              >
+                <div className="text-center">{index + 1}</div>
+                <div className="text-center">{score.score.toString().padStart(3, "0")}</div>
+                <div className="text-center uppercase truncate">{score.name || "---"}</div>
               </div>
-
-              {/* Filas de puntuaciones - Siempre mostramos 10 filas */}
-              <div className={`${arcadeFont.className} grid gap-2 relative`} style={{ gridTemplateRows: 'repeat(10, auto)' }}>
-                {displayScores.slice(0, 10).map((score, index) => (
-                  <div
-                    key={index}
-                    className={`
-                      grid grid-cols-3 items-center 
-                      ${rowColors[index % rowColors.length]} 
-                      ${highlightedRow === index ? "bg-opacity-20 bg-white animate-pulse" : ""}
-                      transition-all duration-300 ease-in-out
-                      py-3 px-2 rounded
-                      border border-opacity-20 border-current
-                      ${index === 0 ? "relative" : ""}
-                      text-xs
-                    `}
-                  >
-                    <div className="text-center">{index + 1}</div>
-                    <div className="text-center">{score.score.toString().padStart(3, "0")}</div>
-                    <div className="text-center uppercase">{score.name || "???"}</div>
-
-                    {/* Estrella para el primer lugar */}
-                    {index === 0 && score.score > 0 && (
-                      <div className="absolute -left-4 top-1/2 transform -translate-y-1/2 text-yellow-300 animate-pulse">
-                        ★
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Texto "HIGH SCORE" que aparece cuando se destaca la primera fila */}
-                {showHighScoreText && (
-                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 text-yellow-300 text-xs animate-pulse">
-                    HIGH SCORE!
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Columna derecha: Video o imagen con QR */}
-            <div className="w-2/5 flex flex-col items-center justify-center bg-black bg-opacity-50 rounded-lg overflow-hidden border border-green-500 border-opacity-30">
-              <div className={`${arcadeFont.className} text-center text-green-300 text-xs mb-2`}>¡JUEGA AHORA!</div>
-
-              {videoError ? (
-                // Fallback: Imagen con QR o mensaje
-                <div className="flex flex-col items-center justify-center p-4 text-center">
-                  <div className="text-green-400 text-sm mb-4">Escanea el código QR para jugar</div>
-                  <div className="w-48 h-48 bg-white flex items-center justify-center rounded">
-                    <div className="text-black text-xs">QR Code</div>
-                  </div>
-                </div>
-              ) : (
-                // Video - Corregimos la ruta del video
-                <video
-                  ref={videoRef}
-                  className="max-w-full max-h-[calc(100%-2rem)] object-contain"
-                  src="/assets/animacion.mp4"
-                  muted
-                  playsInline
-                  preload="auto"
-                  autoPlay
-                  loop
-                />
-              )}
-            </div>
+            ))}
           </div>
 
           {/* Footer */}
-          <div className="mt-2">
-            {/* Línea decorativa antes del footer */}
-            <div className="w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent mb-2"></div>
-
-            {/* Footer y créditos */}
-            <div className="flex justify-between items-center">
-              <KonamiFooter />
-              <div className="text-white text-sm">
-                CREDIT <span className="text-yellow-300 animate-pulse">{credits}</span>
-              </div>
-            </div>
+          <div className="mt-2 sm:mt-4 text-gray-400 text-xxs sm:text-xs flex items-center">
+            <span>CHAOS ORDER</span>
+            <span className="mx-1">®</span>
+            <span className="ml-1">2024</span>
           </div>
         </div>
       </div>

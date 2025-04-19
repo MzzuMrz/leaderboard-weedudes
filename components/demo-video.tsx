@@ -12,18 +12,38 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
   const [hasError, setHasError] = useState(false)
   const [errorDetails, setErrorDetails] = useState<string>("")
   const [retryCount, setRetryCount] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
 
-  // Primer efecto: configurar listeners y manejar estados del video
+  // Verificar que el video existe y registrar información
+  useEffect(() => {
+    // Verificar que el video existe
+    const checkVideoExists = async () => {
+      try {
+        const videoPath = "/videos/animacion-weeddudes.mp4"
+        const response = await fetch(videoPath, { method: "HEAD" })
+
+        if (!response.ok) {
+          console.error(`Video no encontrado en la ruta: ${videoPath}. Estado: ${response.status}`)
+          setErrorDetails(`Video no encontrado (${response.status})`)
+          setHasError(true)
+        } else {
+          console.log(`Video encontrado en la ruta: ${videoPath}`)
+        }
+      } catch (err) {
+        console.error("Error verificando el video:", err)
+        setErrorDetails(`Error verificando el video: ${err instanceof Error ? err.message : String(err)}`)
+        setHasError(true)
+      }
+    }
+
+    checkVideoExists()
+  }, [])
+
   useEffect(() => {
     const videoElement = videoRef.current
     if (!videoElement) return
 
-    console.log("Inicializando video component")
-
     // Función para manejar el final del video
     const handleVideoEnd = () => {
-      console.log("Video terminado")
       if (onVideoEnd) {
         onVideoEnd()
       } else {
@@ -49,18 +69,6 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
       setHasError(false)
     }
 
-    // Función para manejar cuando el video comienza a reproducirse
-    const handlePlay = () => {
-      console.log("Video reproduciendo")
-      setIsPlaying(true)
-    }
-
-    // Función para manejar cuando el video se pausa
-    const handlePause = () => {
-      console.log("Video pausado")
-      setIsPlaying(false)
-    }
-
     // Función para manejar errores
     const handleError = (e: Event) => {
       const target = e.target as HTMLVideoElement
@@ -70,7 +78,6 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
       console.error(`Error en el video (código ${errorCode}):`, errorMessage)
       setErrorDetails(`Error de reproducción (${errorCode}): ${errorMessage}`)
       setHasError(true)
-      setIsPlaying(false)
     }
 
     // Registrar información sobre el video
@@ -86,21 +93,32 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
     videoElement.addEventListener("ended", handleVideoEnd)
     videoElement.addEventListener("canplay", handleCanPlay)
     videoElement.addEventListener("error", handleError)
-    videoElement.addEventListener("play", handlePlay)
-    videoElement.addEventListener("pause", handlePause)
 
     // Limpiar al desmontar
     return () => {
-      console.log("Limpiando componente de video")
       videoElement.removeEventListener("ended", handleVideoEnd)
       videoElement.removeEventListener("canplay", handleCanPlay)
       videoElement.removeEventListener("error", handleError)
-      videoElement.removeEventListener("play", handlePlay)
-      videoElement.removeEventListener("pause", handlePause)
 
-      // Detener el video al desmontar
-      videoElement.pause()
-      videoElement.src = ""
+      // Importante: detener cualquier operación pendiente antes de desmontar
+      try {
+        const playPromise = videoElement.play()
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              videoElement.pause()
+              videoElement.currentTime = 0
+            })
+            .catch(() => {
+              // Ignorar errores al pausar
+            })
+        } else {
+          videoElement.pause()
+          videoElement.currentTime = 0
+        }
+      } catch (err) {
+        // Ignorar errores al limpiar
+      }
     }
   }, [onVideoEnd])
 
@@ -109,30 +127,27 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
     const videoElement = videoRef.current
     if (!videoElement || !isVideoReady || hasError) return
 
-    // Solo intentar reproducir si no está ya reproduciendo
-    if (videoElement.paused) {
-      // Usar un timeout para evitar conflictos con otros efectos
-      const playTimeout = setTimeout(() => {
-        try {
-          console.log("Intentando reproducir el video...")
-          const playPromise = videoElement.play()
-          if (playPromise !== undefined) {
-            playPromise.catch((err) => {
-              console.error("Error reproduciendo video:", err)
-              setErrorDetails(`Error reproduciendo: ${err instanceof Error ? err.message : String(err)}`)
-              setHasError(true)
-            })
-          }
-        } catch (err) {
-          console.error("Error reproduciendo video:", err)
-          setErrorDetails(`Error reproduciendo: ${err instanceof Error ? err.message : String(err)}`)
-          setHasError(true)
+    // Usar un timeout para evitar conflictos con otros efectos
+    const playTimeout = setTimeout(() => {
+      try {
+        console.log("Intentando reproducir el video...")
+        const playPromise = videoElement.play()
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.error("Error reproduciendo video:", err)
+            setErrorDetails(`Error reproduciendo: ${err instanceof Error ? err.message : String(err)}`)
+            setHasError(true)
+          })
         }
-      }, 100)
-
-      return () => {
-        clearTimeout(playTimeout)
+      } catch (err) {
+        console.error("Error reproduciendo video:", err)
+        setErrorDetails(`Error reproduciendo: ${err instanceof Error ? err.message : String(err)}`)
+        setHasError(true)
       }
+    }, 100)
+
+    return () => {
+      clearTimeout(playTimeout)
     }
   }, [isVideoReady, hasError])
 
@@ -149,24 +164,9 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
     setRetryCount((prev) => prev + 1)
     setHasError(false)
     setIsVideoReady(false)
-    setIsPlaying(false)
 
     if (videoRef.current) {
       videoRef.current.load()
-    }
-  }
-
-  // Backup manual para iniciar reproducción
-  const handleManualPlay = () => {
-    const videoElement = videoRef.current
-    if (!videoElement) return
-
-    try {
-      videoElement.play().catch(err => {
-        console.error("Error en reproducción manual:", err)
-      })
-    } catch (err) {
-      console.error("Error en reproducción manual:", err)
     }
   }
 
@@ -195,20 +195,15 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
       <div className="text-red-500 text-center p-4">
         <p>Error al cargar el video</p>
         <p className="text-xs mt-2 text-gray-400">{errorDetails}</p>
-        <div className="flex flex-col gap-2 mt-4">
-          <button className="px-4 py-2 bg-green-600 rounded hover:bg-green-700" onClick={handleRetry}>
-            Reintentar ({retryCount}/3)
-          </button>
-          <button className="px-4 py-2 bg-yellow-600 rounded hover:bg-yellow-700" onClick={handleManualPlay}>
-            Reproducir manualmente
-          </button>
-          <button
-            className="px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
-            onClick={() => onVideoEnd && onVideoEnd()}
-          >
-            Volver a Scores
-          </button>
-        </div>
+        <button className="mt-4 px-4 py-2 bg-green-600 rounded hover:bg-green-700" onClick={handleRetry}>
+          Reintentar ({retryCount}/3)
+        </button>
+        <button
+          className="mt-2 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700"
+          onClick={() => onVideoEnd && onVideoEnd()}
+        >
+          Volver a Scores
+        </button>
       </div>
     )
   }
@@ -218,28 +213,14 @@ export function DemoVideo({ onVideoEnd }: DemoVideoProps) {
       {hasError ? (
         renderFallback()
       ) : (
-        <div className="relative">
-          <video
-            ref={videoRef}
-            className="max-w-full max-h-full object-contain"
-            src="/animacion.mp4"
-            muted
-            playsInline
-            preload="auto"
-            autoPlay
-            loop
-          />
-          {!isPlaying && isVideoReady && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-40">
-              <button
-                className="px-8 py-4 bg-green-600 rounded-full hover:bg-green-700 text-white font-bold text-xl"
-                onClick={handleManualPlay}
-              >
-                ▶ Reproducir
-              </button>
-            </div>
-          )}
-        </div>
+        <video
+          ref={videoRef}
+          className="max-w-full max-h-full object-contain"
+          src="/animacion-weeddudes.mp4"
+          muted
+          playsInline
+          preload="auto"
+        />
       )}
     </div>
   )
