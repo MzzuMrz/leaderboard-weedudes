@@ -216,7 +216,7 @@ export default function HighScores() {
       </div>
 
       {/* Contenedor principal centrado - ajustado para asegurar que cabe en viewport */}
-      <div className="w-[90%] max-w-4xl mb-24 h-auto max-h-[90vh] relative rounded-xl overflow-hidden border-2 border-green-500 bg-black">
+      <div className="w-[90%] max-w-2xl mb-24 h-auto max-h-[90vh] relative rounded-xl overflow-hidden border-2 border-green-500 bg-black">
         {/* Efectos CRT */}
         <Scanlines />
 
