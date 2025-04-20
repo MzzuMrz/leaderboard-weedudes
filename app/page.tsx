@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { Press_Start_2P } from "next/font/google"
 import { Scanlines } from "@/components/scanlines"
 import Image from "next/image"
@@ -25,46 +25,78 @@ export default function HighScores() {
   const [highlightedRow, setHighlightedRow] = useState<number | null>(null)
   const [videoLoaded, setVideoLoaded] = useState(false)
   const [videoError, setVideoError] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
   const videoRef = useRef<HTMLVideoElement>(null)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Obtener puntuaciones desde la API
-  useEffect(() => {
-    const fetchScores = async () => {
-      try {
-        // Efecto de carga con delay más corto
+  // Función para obtener puntuaciones - extraída para reutilización
+  const fetchScores = useCallback(async (isInitialLoad = false) => {
+    try {
+      // Efecto de carga con delay más corto solo para la carga inicial
+      if (isInitialLoad) {
         await new Promise((resolve) => setTimeout(resolve, 1000))
+      }
 
-        const response = await fetch("https://rollingweedudes.vercel.app/api/scores")
-        const data = await response.json()
+      const response = await fetch("https://rollingweedudes.vercel.app/api/scores")
+      const data = await response.json()
 
-        // Ordenar por puntuación descendente
-        const sortedScores = data.sort((a: Score, b: Score) => b.score - a.score)
-        setScores(sortedScores)
+      // Ordenar por puntuación descendente
+      const sortedScores = data.sort((a: Score, b: Score) => b.score - a.score)
+      
+      // Actualizar puntuaciones y estado de carga
+      setScores(sortedScores)
+      if (isInitialLoad) {
         setLoading(false)
-      } catch (error) {
-        console.error("Error fetching scores:", error)
-        // Datos de fallback en caso de error
-        const fallbackScores = [
-          { name: "WEEDUDES.CLUB", score: 88, purity: 95, timestamp: Date.now() },
-          { name: "WEEDUDES.CLUB", score: 75, purity: 90, timestamp: Date.now() },
-          { name: "VENDOFASO", score: 52, purity: 85, timestamp: Date.now() },
-          { name: "YUAN", score: 42, purity: 80, timestamp: Date.now() },
-          { name: "JSJSJSKSJ", score: 22, purity: 75, timestamp: Date.now() },
-          { name: "YUAN", score: 18, purity: 70, timestamp: Date.now() },
-          { name: "ANGELZK", score: 12, purity: 65, timestamp: Date.now() },
-          { name: "JSJSJSKSJ", score: 0, purity: 60, timestamp: Date.now() },
-          { name: "ANGELZK", score: 0, purity: 55, timestamp: Date.now() },
-          { name: "---", score: 0, purity: 50, timestamp: Date.now() },
-        ]
-        setScores(fallbackScores)
+      }
+      
+      // Actualizar timestamp de última actualización
+      setLastUpdated(new Date())
+      
+      // Añadir efecto de highlight temporal para las filas que cambiaron
+      if (!isInitialLoad) {
+        // Aquí podríamos implementar lógica para destacar filas que cambiaron
+        // Por ejemplo, comparando arrays antiguo y nuevo
+      }
+    } catch (error) {
+      console.error("Error fetching scores:", error)
+      // Datos de fallback en caso de error
+      const fallbackScores = [
+        { name: "WEEDUDES.CLUB", score: 88, purity: 95, timestamp: Date.now() },
+        { name: "WEEDUDES.CLUB", score: 75, purity: 90, timestamp: Date.now() },
+        { name: "VENDOFASO", score: 52, purity: 85, timestamp: Date.now() },
+        { name: "YUAN", score: 42, purity: 80, timestamp: Date.now() },
+        { name: "JSJSJSKSJ", score: 22, purity: 75, timestamp: Date.now() },
+        { name: "YUAN", score: 18, purity: 70, timestamp: Date.now() },
+        { name: "ANGELZK", score: 12, purity: 65, timestamp: Date.now() },
+        { name: "JSJSJSKSJ", score: 0, purity: 60, timestamp: Date.now() },
+        { name: "ANGELZK", score: 0, purity: 55, timestamp: Date.now() },
+        { name: "---", score: 0, purity: 50, timestamp: Date.now() },
+      ]
+      setScores(fallbackScores)
+      if (isInitialLoad) {
         setLoading(false)
       }
     }
-
-    fetchScores()
-
-    return () => {}
   }, [])
+
+  // Efecto para cargar puntuaciones iniciales y configurar intervalo de actualización
+  useEffect(() => {
+    // Carga inicial
+    fetchScores(true)
+
+    // Configurar intervalo para actualizar cada 10 segundos
+    intervalRef.current = setInterval(() => {
+      fetchScores(false)
+    }, 10000) // 10 segundos
+
+    // Limpiar intervalo al desmontar
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+  }, [fetchScores])
 
   // Manejar la reproducción del video
   useEffect(() => {
@@ -210,7 +242,7 @@ export default function HighScores() {
           <div className={`${arcadeFont.className} space-y-1 sm:space-y-2 flex-grow overflow-y-auto`}>
             {scores.slice(0, 10).map((score, index) => (
               <div
-                key={index}
+                key={`${score.name}-${score.score}-${index}`}
                 className={`
                   grid grid-cols-3 items-center 
                   ${rowColors[index]} 
@@ -226,11 +258,16 @@ export default function HighScores() {
             ))}
           </div>
 
-          {/* Footer */}
-          <div className="mt-2 sm:mt-4 text-gray-400 text-xxs sm:text-xs flex items-center">
-            <span>CHAOS ORDER</span>
-            <span className="mx-1">®</span>
-            <span className="ml-1">2025</span>
+          {/* Footer con último tiempo de actualización */}
+          <div className="mt-2 sm:mt-4 text-gray-400 text-xxs sm:text-xs flex justify-between items-center">
+            <div>
+              <span>CHAOS ORDER</span>
+              <span className="mx-1">®</span>
+              <span className="ml-1">2025</span>
+            </div>
+            <div className="text-xxs opacity-50">
+              UPDATED: {lastUpdated.toLocaleTimeString()}
+            </div>
           </div>
         </div>
       </div>
